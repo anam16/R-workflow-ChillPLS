@@ -15,7 +15,7 @@ We used the agroclimatic functions integrated into the [`chillR`](https://cran.r
 ## Usage
 
 1. Clone or download this repository.
-2. Open the `Genotipos_Phno.Rmd` file in RStudio.
+2. Open the `Genotipos_Pheno.Rmd` file in RStudio.
 3. Ensure all required packages are installed.
 4. Run or knit the document to reproduce the analysis.
 
