@@ -21,6 +21,6 @@ We used the agroclimatic functions integrated into the [`chillR`](https://cran.r
 
 ## Citation
 
-If you use this workflow or data in your research, please cite the study appropriately. Citation details will be added once the publication is available.
+If you use this workflow or data in your research, please cite the study appropriately. 
 
 
