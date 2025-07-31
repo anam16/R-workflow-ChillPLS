@@ -1,0 +1,433 @@
+---
+title: "Genotipos Phen"
+author: "Ana María Muñoz Morales"
+date: "2025-03-28"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following example is used to calculate the genotypes of X species.  This workflow is presented in the programming language R.
+All the code and data used for the analysis described below are available in the GitHub repository [Insert Repository Name Here].
+
+To use the different functions presented in this demonstration, it is necessary to load the following libraries; tidyr, openxlsx, readxl, dlyr, chillR, tools and stringr (code 1). INSERTAR REFERENCIAS 
+
+
+```{r,eval=FALSE}
+library(tidyr)
+library(openxlsx)
+library(readxl)
+library(dplyr)
+library(chillR)
+library(stringr)
+library(tools)  
+```
+*Code 1: This code shows the libraries needed to execute the R script*
+
+To perform the analysis for this experiment, an Excel file containing different individuals of various apricot genotypes and their flowering dates over several years was used. The dataset includes annual records from 2012 to 2025 (Table 1) and was originally obtained from [Insert data source here].
+
+
+
+![Texto alternativo](C:/Users/Usuario/Desktop/AM/Alvaro/Paper_Methods/Figures_Genotypes/cap_1.png)
+*Table 1: The table presents the original structure of the data set, with columns organized from left to right as follows: “Genotype”, followed by ‘BD12’ to “BD25”, corresponding to the flowering dates recorded annually from 2012 to 2025. The rows represent individual samples, labeled with the structure “X_Y”, where X corresponds to the row of the farm plot where this has been planted and the letter Y indicates the individual within that genotype.*
+
+
+
+The following block of R code (Code 2) demonstrates how the dataset is loaded into R, including the steps to read data corresponding to different genetic crosses (variety names such as BxC and GxC). Additionally, treatments containing an asterisk (*) in any of the recorded years were excluded from the analysis to ensure data quality.
+
+```{r,warning=FALSE,eval=FALSE}
+
+ Phenotype_Phenology_BxC_Definitivo <- read_excel("Phenotype_(Phenology)BxC_GxC_Definitivo.xlsx", 
+    sheet = "BxC Phenotype Phenology", col_types = c("text", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric"))
+  
+
+ Phenotype_Phenology_BxC_filt<- na.omit(Phenotype_Phenology_BxC_Definitivo) # Delete rows with * symbol
+
+ Phenotype_Phenology_GxC_Definitivo <- read_excel("Phenotype_(Phenology)BxC_GxC_Definitivo.xlsx", 
+    sheet = "GxC Phenotype Phenology", col_types = c("text", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric"))
+
+
+ Phenotype_Phenology_GxC_filt<- na.omit(Phenotype_Phenology_GxC_Definitivo) 
+ 
+ 
+```
+
+*Code 2: This R code shows how the data of the different crossings (BxC and GxC) are loaded and cleaned.*
+
+
+The next step involves processing the format of the data previously loaded. The *process_data_format* function (Code 3) was specifically designed to reformat and filter the dataset for further analysis. This function utilizes the *pivot_longer* function from the tidyverse package to transform the data from a wide format to a long format. Columns beginning with "BD" (bloom dates) are combined into two new columns: Year, which converts the original column names by replacing the "BD" prefix with "20" to create a numeric year format (e.g., "BD12" becomes "2012"), and pheno, which stores the phenotypic values corresponding to each year. Finally, the reformatted dataset is saved as an Excel file for subsequent analyses.
+
+```{r,eval=FALSE}
+
+process_format_data<-function(data,new_name){
+  
+  # Transform the excel format
+  data_filt <- pivot_longer(data, cols = starts_with("BD"), names_to = "Year", values_to = "pheno")
+  
+  # Change the year to numerical type
+  data_filt$Year <- as.numeric(sub("BD", "20", data_filt$Year))
+  
+  # Write an excel file
+  write.xlsx(data_filt,paste0(new_name,"_edit_filt.xlsx"))
+}
+
+
+# The previously defined function is applied
+process_format_data(Phenotype_Phenology_BxC_filt,"BxC")
+process_format_data(Phenotype_Phenology_GxC_filt,"GxC")
+
+```
+
+*Code 3: This code reformats the dataset from wide format to long format, consolidating columns starting with “BD” into Year (numeric format, e.g., ‘BD12’ → “2012”) and phenotype (phenotypic values). The reformatted data are exported as an Excel file for further analysis.*
+
+Table 2 shows what the final result looks like after applying the process_format_data function.
+
+![Texto alternativo](C:/Users/Usuario/Desktop/AM/Alvaro/Paper_Methods/Figures_Genotypes/cap_2.png)
+*Table 2: Table 2 shows the edited excel after applying code 3.*
+
+
+The following code (Code 4) defines the function *load_climatic_file*, designed to process a climatic data file(Table 3) to calculate cooling requirements, facilitating the evaluation of agro-climatic conditions. The function starts by ensuring that the key columns of the dataset (Year, Month, Day, Tmax, Tmin) have the appropriate data type. It then validates the completeness of the climate records using the *check_temperature_record* function and calculates the number of missing values (NA). It then filters the records after a specific year and adjusts the values with fix_weather. Next, the data is transformed into hourly temperatures (stack_hourly_temps) for the given latitude, and the daily cold accumulation is calculated using daily_chill. Finally, the function returns a list with the validation results, the missing value count, the adjusted climate data and the daily cold accumulation. This procedure is exemplified by applying the function to a data file (Cieza11-25.xlsx), considering records since 2010 and a latitude of 38.11°.
+
+```{r,eval=FALSE}
+
+load_climatic_file<-function(dataset,Year,latitude){
+  
+  #The data type is checked
+  dataset<-as.data.frame(dataset)
+  dataset$Year<-as.integer(dataset$Year)
+  dataset$Month<-as.integer(dataset$Month)
+  dataset$Day<-as.integer(dataset$Day)
+  dataset$Tmax<-as.numeric(dataset$Tmax)
+  dataset$Tmin<-as.numeric(dataset$Tmin)
+
+  ## Check the temperature log
+  check_temperatures<-check_temperature_record(dataset, hourly = FALSE, completeness_check = TRUE, no_variable_check = FALSE)
+  
+  # Calculate the number of missing values in the data set.
+  result_na<-sum(is.na(dataset))
+  
+  # Correct the meteorological data, considering only the years greater than the one specified.
+  weather<-fix_weather(dataset[which(dataset$Year>Year),])
+  
+  # Calculate the daily chill using the corrected data and the latitude
+  dc<-daily_chill(stack_hourly_temps(weather,latitude), 10)
+  
+  # Return a list with the results of checks, corrections and calculations.
+  return(list(check_temperatures = check_temperatures,
+            result_na = result_na,
+            weather = weather,
+            dc = dc))
+
+}
+
+
+Cieza11_25_2 <- load_climatic_file(read_excel("C:/Users/Usuario/Desktop/AM/Genotipos_Alvaro/Cieza11-25.xlsx"),2010,38.11)
+
+weather<-Cieza11_25_2$weather
+dc<-Cieza11_25_2$dc
+```
+*Code 4: This function processes climate data, validates temperature records, and calculates daily cold accumulation using hourly temperature stacks. Inputs include a dataset, a starting year and latitude, with outputs such as data integrity checks, filtered weather data and cold accumulation results.*
+
+![Texto alternativo](C:/Users/Usuario/Desktop/AM/Alvaro/Paper_Methods/Figures_Genotypes/cap_3.png)
+*Table 3: The table presents daily climate data with columns representing key variables: Day, indicating the day of the month; JDay, the Julian day representing the sequential day of the year; Month, specifying the month (from 1 to 12); Year, denoting the calendar year; Tmax, the daily maximum temperature in degrees Celsius; and Tmin, the daily minimum temperature in degrees Celsius.*
+
+
+
+The *process_genotipes* function(Code 5) was designed to process genotypic data by organizing them into subsets and exporting them as separate Excel files. From the Genotype column, two numerical groups are generated: group1, which corresponds to the number before the underscore (_), and group2, which identifies the number after the underscore. These groups are used to group the data using group_by, and then the records are split into unique subsets with group_split. Each generated subset is exported to an Excel file with a name that includes the provided identifier (id) and the unique group1 and group2 values. The function ensures efficient organization of the data, facilitating further analysis. In this case, it was applied to the BxC_edit_filt.xlsx and GxC_edit_filt.xlsx files, generating multiple files organized by genotypic group combinations.
+
+
+```{r,eval=FALSE}
+
+process_genotipes<-function(data,id){
+  data %>%
+  # Divide the data into a list of subsets, one for each group.
+  mutate(group1 = as.numeric(sub("^(\\d+)_.*", "\\1", Genotype)),
+  group2 = as.numeric(sub("^\\d+_(\\d+).*", "\\1", Genotype))) %>%
+  group_by(group1, group2) %>%
+  
+  group_split() %>%
+  # Iterate over each group. For each .x subset, write an Excel file using write.xlsx.
+  purrr::walk(~write.xlsx(.x, paste0("Genotypes/",id,"_group_", unique(.x$group1), "_", unique(.x$group2), ".xlsx")))
+}
+
+
+process_genotipes(read_excel("BxC_edit_filt.xlsx"),"BxC")
+process_genotipes(read_excel("GxC_edit_filt.xlsx"),"GxC")
+```
+*Code 5: This function processes the genotypic data, extracting group identifiers from the Cultivar column, dividing the data set into subsets based on unique combinations of groups, and exporting each subset as an Excel file. In this way, the subsets of data are organized and easily accessible for further analysis.*
+
+Code 6 automatically processes a set of Excel files with genotypic data to perform a Partial Least Squares (PLS) analysis that models the relationship between climatic and genotypic data. First, a list of files is generated in the “Genotypes/” directory that meet a specific pattern. Each file is read iteratively, extracting its contents and base name, while removing unnecessary columns (group1 and group2) and adjusting the key data types (Year as integer and pheno as factor). Next, the PLS_chill_force function is applied, using the preprocessed climate data and splitting the analysis seasonally (split_month = 10 ). The results of the analysis are exported to new Excel files (Table 4) in the “Genotypes/Results_PLS_Genotypes/” directory, with names that correspond to the source file, allowing efficient and organized management of the results for further interpretation.This function processes the genotypic data, extracting group identifiers from the Cultivar column, splitting the data set into subsets based on unique combinations of groups, and exporting each subset as an Excel file. In this way, the subsets of data are organized and easily accessible for further analysis.
+
+```{r,eval=FALSE}
+
+
+files_genotipes<-list.files("Genotypes/",pattern = "\\.xlsx",full.names = TRUE)
+
+for (i in files_genotipes){
+  
+  # Read the excel file
+  data<-read_excel(i)
+  name_data<-tools::file_path_sans_ext(basename(i))
+  
+  # Check the data type
+  data$group1=NULL
+  data$group2=NULL
+  data<-as.data.frame(data)
+  data$Year<-as.integer(data$Year)
+  data$pheno<-as.factor(data$pheno)
+  
+  # Application of the PLS_chill_force function
+  result <- PLS_chill_force(daily_chill_obj = dc, bio_data_frame = data, split_month = 10)
+  
+  #Save the result
+  write.xlsx(result,paste0("Genotypes/Results_PLS_Genotypes/",name_data,".xlsx"))
+  
+}
+
+```
+*Code 6: The function processes the genotypic data, extracting group identifiers from the Cultivar column, dividing the data set into subsets based on unique combinations of groups, and exporting each subset as an Excel file. In this way, the subsets of data are organized and easily accessible for further analysis.*
+
+![Texto alternativo](C:/Users/Usuario/Desktop/AM/Alvaro/Paper_Methods/Figures_Genotypes/cap_4.png)
+
+*Table 4:The table contains results related to the analysis of accumulated cold (Chill) for different individuals, identified in the first column with unique codes (e.g., 1101, 1102). The second column indicates the type of analysis performed, which in this case is Chill, while the third column shows values corresponding to the days of flowering start (-60, -59, etc.). The following columns present values derived from said analysis: ask what was the VIP Score and the other from columns 4 and 5; 6 and 7??*
+
+The files generated with code 6 are organized into two separate folders: those corresponding to the BxC genotypes are stored in a directory named "BxC," while those related to the GxC genotype are placed in a folder named "GxC.
+
+The *process_PLS_file*(code 7) function was developed to process multiple datasets related to cold portions and extract relevant information about the range of days associated with a specific phenotypic behavior. For each dataset, the genotype identifier is extracted, and rows that meet a negative coefficient (column X4) and a VIP score greater than or equal to (column X5) are filtered out. The function determines the range of days using the first day that meets the conditions and the last day below the average phenotypic value of the corresponding genotype. The results are aggregated into a global data frame and exported as an Excel file, allowing for seamless integration of climatic and phenological data for further analysis.
+
+```{r,eval=FALSE}
+
+process_PLS_file <- function(data_PLS, data_pheno, name_file) {
+  
+  # Create an empty dataframe to store the results
+  resultados_PLS <- data.frame(Genotypes = character(), first_day = numeric(), end_day = numeric(), stringsAsFactors = FALSE)
+
+  # Iterate over each PLS data file
+  for (file in data_PLS) {
+    
+    # Read the Excel file, specifying the sheet with the chill portions ("Chill_Portions")
+    data <- read_excel(file, col_names = FALSE, sheet = "Chill_Portions")
+    
+    # Extract the genotype identifier from the file name
+    id_gen <- file_path_sans_ext(basename(file))
+    pattern <- "_(\\d+(?:_\\d+)*)$"
+    result_id_gen <- regmatches(id_gen, regexpr(pattern, id_gen))
+    result_id_gen <- sub("_", "", result_id_gen)
+    
+    # Rename the columns of the read data
+    colnames(data) <- paste0("X", seq_len(ncol(data)))
+
+    # Filter rows corresponding to the "Chill" type
+    data_filt <- data %>% filter(X2 == "Chill")
+    
+    # Identify indices where specific conditions are met
+    indices <- which(data_filt$X4 < 0 & data_filt$X5 >= 0.8)
+
+    # Check if there are enough indexes that meet the conditions
+    if (length(indices) >= 2) {
+      # Filter the corresponding data range
+      data_filt_2 <- data_filt[indices[1]:indices[length(indices)], ]
+      
+      # Filter and calculate the average of the phenotypic value associated with the genotype
+      data_pheno_filt <- data_pheno %>%
+        filter(Genotype == result_id_gen) %>%
+        summarise(pheno = mean(pheno, na.rm = TRUE))
+      
+      pheno_value <- data_pheno_filt$pheno
+
+      # Validate that `pheno_value` is not null
+      if (length(pheno_value) == 0 || is.na(pheno_value)) {
+        print(paste("Warning: No `pheno` found for genotype", result_id_gen))
+        next
+      }
+
+      # Get the first day of the filtered range
+      first_day <- data_filt_2$X3[1]
+
+      # Determine the last day within the range allowed by the phenotypic value
+      possible_last_days <- data_filt_2$X3[data_filt_2$X3 < pheno_value]
+      end_day <- if (length(possible_last_days) > 0) max(possible_last_days) else NA
+
+      # Add results to the global dataframe
+      resultados_PLS <- rbind(resultados_PLS, data.frame(
+        Genotypes = result_id_gen,
+        first_day = first_day,
+        end_day = end_day,
+        stringsAsFactors = FALSE
+      ))
+
+    } else {
+      # Warning message if there are not enough rows that meet the conditions
+      cat(paste("The file", file, "does not have enough rows that meet the conditions.\n"))
+    }
+  }
+
+  # Save the results to an Excel file
+  write.xlsx(resultados_PLS, paste0(name_file))
+}
+
+
+
+
+
+```
+*Code 7: A flowchart illustrating the data processing performed by the process_PLS_file function. The function filters climatic data (chill portions) for each genotype, determines the relevant range of days based on predefined conditions and associated phenotypic values, and exports the results in tabular format. The methodology involves identifying the first day that satisfies the conditions, followed by determining the last day within the range allowed by the phenotypic value.*
+
+Code 8 is used to insert phenological and climatic data for two apricot genotypes, BxC and GxC, using the *process_PLS_file* function. The code first retrieves lists of Excel files containing the chilling portions for each genotype from designated directories. This function is then applied to both datasets, extracting the results for each genotype into separate Excel files.
+
+```{r,warning=FALSE,eval=FALSE}
+# Genotype BxC
+
+# List of Excel files to process
+files_PLS_BxC <- list.files(path = "Genotypes/Results_PLS_Genotypes/BxC", pattern = "*.xlsx", full.names = TRUE)
+# Read the phenology file corresponding to the genotype
+data_pheno_BxC<-read_excel("BxC_edit_filt.xlsx")
+
+# Run the function for the BxC genotype
+process_PLS_file(files_PLS_BxC,data_pheno_BxC,"Result_PLS_genotypes_BxC.xlsx")
+
+# Genotype GxC
+
+files_PLS_GxC<- list.files(path = "Genotypes/Results_PLS_Genotypes/GxC", pattern = "*.xlsx", full.names = TRUE)
+
+data_pheno_GxC<-read_excel("GxC_edit_filt.xlsx")
+
+# Run the function for the GxC genotype
+process_PLS_file(files_PLS_GxC,data_pheno_GxC,"Result_PLS_genotypes_GxC.xlsx")
+```
+
+*Code 8: This code is used to import the cold portion data and the corresponding phenological data to the process_PLS_file function.*
+
+
+The *process_Jday*(code 9) function calculates temperature-based metrics for each genotype in a dataset, focusing on cold and heat accumulation. For each genotype, the function calculates the starting Julian day (Start_JDay) based on the provided daily values and processes the hourly temperature data using the *stack_hourly_temps* function. The *tempResponse* function is then applied to estimate responses using various models, including chilling hours, Utah chilling units, chilling slices, and growing degree hours. The genotype-specific results are stored in a structured list and exported as individual Excel files, named by genotype and group ID. This approach allows for detailed analysis of the chilling and heat needs of multiple genotypes
+
+```{r,eval=FALSE}
+
+process_Jday <- function(data_PLS, group, path_output) {
+  
+  # Initialize a list to store results for each genotype
+  result_Jday <- list()
+  
+  # Iterate over each genotype in the dataset
+  for (i in 1:nrow(data_PLS)) {
+    genotype <- data_PLS$Genotypes[i]  # Extract the genotype name
+    first_day <- data_PLS$first_day[i]  # Extract the first day
+    end_day <- data_PLS$end_day[i]  # Extract the end day
+  
+    # Calculate the starting Julian day by adding 365 to the first day
+    Start_JDay <- first_day + 365
+  
+    # Calculate hourly temperature stacks for the specified latitude
+    hourtemps <- stack_hourly_temps(weather, latitude = 38.11)
+  
+    # Compute temperature responses using different chilling and heat models
+    result <- tempResponse(
+      hourtemps, 
+      Start_JDay = Start_JDay, 
+      End_JDay = end_day,  # Use the last valid day for the genotype
+      models = list(
+        Chilling_Hours = Chilling_Hours,  # Chilling Hours model
+        Utah_Chill_Units = Utah_Model,    # Utah Chill Units model
+        Chill_Portions = Dynamic_Model,   # Dynamic Chill Portions model
+        GDH = GDH                         # Growing Degree Hours model
+      ),
+      misstolerance = 50,  # Allow for missing values up to a specified tolerance
+      whole_record = FALSE  # Analyze only the specified time range
+    )
+  
+    # Store the results in the list, indexed by genotype
+    result_Jday[[genotype]] <- result
+  }
+  
+  # Write the results for each genotype to Excel files
+  for (genotype in names(result_Jday)) {
+    name_file <- paste0(group, "_", genotype)  # Generate a unique filename
+    write.xlsx(
+      result_Jday[[genotype]], 
+      paste0(path_output, name_file, "_CP_results.xlsx")  # Save results with group and genotype info
+    )
+  }
+}
+
+```
+*Code 9: This function calculates temperature-based cooling and heating metrics for each genotype, based on hourly temperature data. Finally, genotype-specific results are generated in separate Excel files for further analysis. *
+
+```{r,eval=FALSE}
+process_Jday(read_excel("Genotypes/Results_PLS_Genotypes/Result_PLS_genotypes_BxC.xlsx"),"BxC","Genotypes/Results_PLS_Genotypes/Results_CP/BxC/")
+process_Jday(read_excel("Genotypes/Results_PLS_Genotypes/Result_PLS_genotypes_GxC.xlsx"),"GxC","Genotypes/Results_PLS_Genotypes/Results_CP/GxC/")
+```
+*Code 9: This code is used to introduce the necessary files needed by the process_Jday function. *
+
+
+
+The *process_final_file*(code 10) function processes multiple Excel files with phenological data and extracts metrics for specific seasons. It filters the data to include predefined seasons, extracts a yearly suffix to identify each season, and assigns the genotype from the file name. The function dynamically restructures the data using pivot tables to create separate columns for each metric (e.g., chill hours, Utah chill units, and dynamic chill portions) categorized by season. The combined results from all files are saved in a single Excel file.
+
+```{r,eval=FALSE}
+process_final_file <- function(files, name) {
+  
+  # Create an empty data frame to store the combined results
+  combined_results <- data.frame()
+  
+  for (i in files) {
+    # Load data from the Excel file
+    data <- read_excel(i)
+    name_file <- tools::file_path_sans_ext(basename(i))  # Extract the file name without the extension
+    
+    # Filter data to include only relevant seasons
+    seasons <- c("2011/2012", "2012/2013", "2013/2014", "2020/2021", 
+                 "2021/2022", "2022/2023", "2023/2024", "2024/2025")
+    filtered_data <- data %>%
+      filter(Season %in% seasons)  # Select rows corresponding to specified seasons
+    
+    # Extract the year suffix to identify specific seasons
+    filtered_data <- filtered_data %>%
+      mutate(
+        Year_suffix = str_sub(Season, 8, 9),  # Extract the last two digits of the starting year
+        Trait = str_extract(name_file, "\\d+_\\d+")  # Identify the genotype from the file name
+      )
+    
+    # Transform the data to create dynamic columns for each metric and season
+    pivoted_data <- filtered_data %>%
+      select(Trait, Year_suffix, Chilling_Hours, Utah_Chill_Units, Chill_Portions) %>%
+      pivot_wider(
+        names_from = Year_suffix,  # Use the year suffix as column names
+        values_from = c(Chilling_Hours, Utah_Chill_Units, Chill_Portions)  # Populate columns with respective values
+      )
+    
+    # Append the processed data to the combined results
+    combined_results <- bind_rows(combined_results, pivoted_data)
+  }
+  
+  # Export the combined results to an Excel file
+  write.xlsx(combined_results, paste0(name, "_final_result.xlsx"))
+}
+```
+*Code 10: This code illustrates the steps for processing phenological data files. The function filters the data by specific seasons, extracts genotype identifiers and season-year suffixes, dynamically pivots the data by metrics and seasons, and consolidates the results into a single Excel file.*
+
+Finally in code 11, all Excel files from the designated directories are read, relevant data is filtered, seasonal metrics are extracted, and the results are consolidated into a final output file for each genotype. This feature ensures a standardized and automated workflow for phenological data management by creating separate files for each genotype.
+```{r,eval=FALSE}
+# Process results for BxC genotype
+result_BxC<-process_final_file(list.files("Genotypes/Results_PLS_Genotypes/Results_CP/BxC/",pattern = "\\.xlsx",full.names = TRUE),"BxC")
+# Process results for GxC genotype
+result_GxC<-process_final_file(list.files("Genotypes/Results_PLS_Genotypes/Results_CP/GxC/",pattern = "\\.xlsx",full.names = TRUE),"GxC")
+```
+*Code 11:This code reads Excel files from specific directories, applies the process_final_file function, and generates standardized output files summarizing seasonal metrics for each genotype.*
+
+
+
+
+
+
+
+
+
