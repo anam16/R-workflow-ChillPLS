@@ -25,4 +25,4 @@ This folder contains the datasets used in the analysis of chilling requirements 
 
 ## Usage Notes
 
-- These datasets are used in the R Markdown analysis script `Genotipos_Phno.Rmd`.
+- These datasets are used in the R Markdown analysis script `Genotipos_Pheno.Rmd`.
